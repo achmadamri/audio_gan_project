@@ -9,7 +9,7 @@ def load_audio_files(path, sr=16000):
     audio_data = []
     for root, _, files in os.walk(path):
         for file in files:
-            if file.endswith(".wav"):
+            if file.endswith(".flac"):
                 audio, _ = sf.read(os.path.join(root, file), samplerate=sr)
                 audio_data.append(audio[:sr])  # Use first 1 second (16k samples)
     return np.array(audio_data)
@@ -72,7 +72,7 @@ def generate_and_save_audio(model, epoch, test_input, sr=16000):
     predictions = model(test_input, training=False)
     generated_audio = predictions[0].numpy().flatten()
     os.makedirs('generated', exist_ok=True)
-    sf.write(f'generated/audio_epoch_{epoch}.wav', generated_audio, sr)
+    sf.write(f'generated/audio_epoch_{epoch}.flac', generated_audio, sr, format='FLAC')
 
 # Training loop
 def train(dataset, epochs, generator, discriminator, generator_optimizer, discriminator_optimizer):
