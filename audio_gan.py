@@ -1,4 +1,5 @@
 import os
+import librosa
 import numpy as np
 import tensorflow as tf
 from tensorflow.keras import layers
@@ -7,11 +8,16 @@ import soundfile as sf
 # Load preprocessed audio files
 def load_audio_files(path, sr=16000):
     audio_data = []
+    file_count = 0  # Track number of files
     for root, _, files in os.walk(path):
         for file in files:
             if file.endswith(".flac"):
-                audio, _ = sf.read(os.path.join(root, file), samplerate=sr)
+                file_path = os.path.join(root, file)
+                audio, _ = librosa.load(file_path, sr=sr)  # Load FLAC and resample to 16kHz
                 audio_data.append(audio[:sr])  # Use first 1 second (16k samples)
+                file_count += 1
+                print(f"Loaded file: {file}")
+    print(f"Total files loaded: {file_count}")
     return np.array(audio_data)
 
 # GAN Generator model
@@ -19,25 +25,22 @@ def make_generator_model():
     model = tf.keras.Sequential()
     model.add(layers.Dense(256, use_bias=False, input_shape=(100,)))
     model.add(layers.LeakyReLU())
-    model.add(layers.Dense(16384, use_bias=False))  # Match audio length
+    model.add(layers.Dense(16000, use_bias=False))  # Match the discriminator's input size of 16000 samples
     model.add(layers.LeakyReLU())
-    model.add(layers.Reshape((1024, 16)))
-    model.add(layers.Conv1DTranspose(64, 25, 4, 'same', use_bias=False))
-    model.add(layers.LeakyReLU())
-    model.add(layers.Conv1DTranspose(1, 25, 4, 'same', use_bias=False, activation='tanh'))
+    model.add(layers.Reshape((16000, 1)))  # Reshape to (16000, 1)
     return model
 
 # GAN Discriminator model
 def make_discriminator_model():
     model = tf.keras.Sequential()
-    model.add(layers.Conv1D(64, 25, 4, 'same', input_shape=(1024, 1)))
+    model.add(layers.Conv1D(64, 25, 4, 'same', input_shape=(16000, 1)))  # 16k samples, 1 channel
     model.add(layers.LeakyReLU())
     model.add(layers.Dropout(0.3))
     model.add(layers.Conv1D(128, 25, 4, 'same'))
     model.add(layers.LeakyReLU())
     model.add(layers.Dropout(0.3))
     model.add(layers.Flatten())
-    model.add(layers.Dense(1))
+    model.add(layers.Dense(1))  # Binary classification (real or fake)
     return model
 
 # Loss functions
@@ -77,10 +80,14 @@ def generate_and_save_audio(model, epoch, test_input, sr=16000):
 # Training loop
 def train(dataset, epochs, generator, discriminator, generator_optimizer, discriminator_optimizer):
     for epoch in range(epochs):
-        for audio_batch in dataset:
-            train_step(audio_batch, generator, discriminator, generator_optimizer, discriminator_optimizer)
+        print(f"Starting epoch {epoch + 1}/{epochs}")
         
-        print(f'Epoch {epoch+1}/{epochs} completed.')
+        for step, audio_batch in enumerate(dataset):
+            train_step(audio_batch, generator, discriminator, generator_optimizer, discriminator_optimizer)
+            if step % 10 == 0:
+                print(f"Step {step} in epoch {epoch + 1}")
+        
+        print(f"Epoch {epoch+1}/{epochs} completed.")
         
         # Generate and save audio after every 10 epochs
         if (epoch + 1) % 10 == 0:
@@ -97,3 +104,32 @@ def train(dataset, epochs, generator, discriminator, generator_optimizer, discri
     generator.save('models/generator_final.h5')
     discriminator.save('models/discriminator_final.h5')
     print("Final models saved.")
+
+# Main execution
+if __name__ == '__main__':
+    dataset_path = 'dataset/processed'  # Path to your processed FLAC files
+    
+    # Load the dataset
+    audio_data = load_audio_files(dataset_path)
+    
+    # Add a check to see if data was loaded
+    print(f"Total audio samples loaded: {len(audio_data)}")
+
+    # Ensure the audio data is in the correct format
+    audio_data = np.expand_dims(audio_data, -1)  # Add channel dimension if needed
+
+    # Set batch size and prepare the dataset
+    BATCH_SIZE = 32
+    dataset = tf.data.Dataset.from_tensor_slices(audio_data).shuffle(10000).batch(BATCH_SIZE)
+
+    # Initialize the generator and discriminator models
+    generator = make_generator_model()
+    discriminator = make_discriminator_model()
+
+    # Optimizers
+    generator_optimizer = tf.keras.optimizers.Adam(1e-4)
+    discriminator_optimizer = tf.keras.optimizers.Adam(1e-4)
+
+    # Train the models
+    EPOCHS = 100
+    train(dataset, EPOCHS, generator, discriminator, generator_optimizer, discriminator_optimizer)
