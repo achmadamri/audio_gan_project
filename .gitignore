@@ -1,0 +1,31 @@
+
+---
+
+## 2. **.gitignore**
+
+Here’s the `.gitignore` file to exclude unnecessary files from version control:
+
+### `.gitignore`
+
+```plaintext
+# Python bytecode and cache files
+__pycache__/
+*.py[cod]
+
+# Virtual environments
+env/
+venv/
+audio_gan_env/
+
+# Data and output files
+dataset/
+*.tar.gz
+*.flac
+
+# Model checkpoints and generated files
+models/
+generated/
+
+# IDE settings
+.vscode/
+.idea/
